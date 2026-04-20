@@ -7,7 +7,7 @@ import {
   ListToolsRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js';
 import { spawn } from 'child_process';
-import { readFile } from 'fs/promises';
+import { readFile, access } from 'fs/promises';
 import { promisify } from 'util';
 import { exec as execCallback } from 'child_process';
 import path from 'path';
@@ -42,14 +42,15 @@ class OverleafGitClient {
 
   async cloneOrPull() {
     try {
-      // Check if repo exists
-      await exec(`test -d "${this.repoPath}/.git"`);
+      // Check if repo exists (cross-platform, avoids Unix-only `test -d`)
+      await access(path.join(this.repoPath, '.git'));
       // Pull latest changes
-      const { stdout } = await exec(`cd "${this.repoPath}" && git pull`, {
+      const { stdout } = await exec(`git -C "${this.repoPath}" pull`, {
         env: { ...process.env, GIT_ASKPASS: 'echo', GIT_PASSWORD: this.gitToken }
       });
       return stdout;
-    } catch {
+    } catch (err) {
+      if (err.code !== 'ENOENT') throw err;
       // Clone repo - Overleaf requires format: https://git:TOKEN@git.overleaf.com/PROJECT_ID
       const { stdout } = await exec(
         `git clone https://git:${this.gitToken}@git.overleaf.com/${this.projectId} "${this.repoPath}"`
